@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Aktivitas Donasi</title>
+    <!-- Tailwind CSS untuk UI yang proper -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans">
+
+    <!-- Header - Judul Sentral -->
+    <header class="bg-white py-6 shadow-sm mb-8">
+        <h1 class="text-2xl font-bold text-center text-gray-800 uppercase tracking-wider">
+            Dashboard Laporan Aktivitas & Keuangan
+        </h1>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 pb-12">
+        
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="glass-card p-6 rounded-2xl text-center">
+                <p class="text-sm font-medium text-gray-500 uppercase">Donatur Aktif</p>
+                <h2 id="total-aktif" class="text-3xl font-bold text-blue-600 mt-2">0</h2>
+            </div>
+            <div class="glass-card p-6 rounded-2xl text-center border-l-4 border-red-500">
+                <p class="text-sm font-medium text-gray-500 uppercase">Belum Donasi Pekan Ini</p>
+                <h2 id="total-bolos" class="text-3xl font-bold text-red-600 mt-2">0</h2>
+            </div>
+            <div class="glass-card p-6 rounded-2xl text-center">
+                <p class="text-sm font-medium text-gray-500 uppercase">Potensi Dana Tertunda</p>
+                <h2 id="potensi-dana" class="text-3xl font-bold text-green-600 mt-2">Rp 0</h2>
+            </div>
+        </div>
+
+        <!-- Section Tabel Laporan -->
+        <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                <h3 class="text-lg font-semibold text-gray-700">Rekap Detail Donatur Bolos (Rutin)</h3>
+                <button onclick="downloadRekap()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-md">
+                    Download CSV
+                </button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-50 text-gray-600 uppercase text-xs font-semibold">
+                        <tr>
+                            <th class="px-6 py-4">No. Register</th>
+                            <th class="px-6 py-4">Nama</th>
+                            <th class="px-6 py-4">Dusun/Jl. Pengambilan</th>
+                            <th class="px-6 py-4">Nominal</th>
+                            <th class="px-6 py-4">Kolektor</th>
+                            <th class="px-6 py-4">WhatsApp</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabel-body" class="divide-y divide-gray-100 text-sm text-gray-700">
+                        <!-- Data akan muncul di sini -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const API_URL = 'URL_WEB_APP_GAS_ANDA'; // GANTI DENGAN URL GAS ANDA
+        let dataBolosGlobal = [];
+
+        async function fetchData() {
+            try {
+                const response = await fetch(API_URL);
+                const data = await response.json();
+                prosesDashboard(data);
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            }
+        }
+
+        function prosesDashboard(data) {
+            const hariIni = new Date();
+            const tujuhHariLalu = new Date(hariIni.getTime() - (7 * 24 * 60 * 60 * 1000));
+
+            // 1. Filter yang Aktif Saja
+            const listAktif = data.filter(d => d.Status === "Aktif");
+            
+            // 2. Identifikasi yang sudah bayar pekan ini (menggunakan Nomor_Register)
+            const sudahBayarIDs = data.filter(d => {
+                const parts = d.Tgl.split('/');
+                const tglDonasi = new Date(parts[2], parts[1] - 1, parts[0]);
+                return tglDonasi >= tujuhHariLalu;
+            }).map(d => d.Nomor_Register);
+
+            // 3. Filter Donatur Rutin yang BELUM Bayar
+            dataBolosGlobal = listAktif.filter(d => 
+                d.Jenis_Donatur === "Rutin" && !sudahBayarIDs.includes(d.Nomor_Register)
+            );
+
+            // Update UI Stats
+            document.getElementById('total-aktif').innerText = listAktif.length;
+            document.getElementById('total-bolos').innerText = dataBolosGlobal.length;
+            
+            const totalPotensi = dataBolosGlobal.reduce((sum, item) => sum + Number(item.Nominal || 0), 0);
+            document.getElementById('potensi-dana').innerText = 'Rp ' + totalPotensi.toLocaleString('id-ID');
+
+            // Render Tabel
+            const tbody = document.getElementById('tabel-body');
+            tbody.innerHTML = dataBolosGlobal.map(d => `
+                <tr class="hover:bg-gray-50 transition-colors">
+                    <td class="px-6 py-4 font-mono text-xs">${d.Nomor_Register}</td>
+                    <td class="px-6 py-4 font-bold">${d.Nama}</td>
+                    <td class="px-6 py-4">${d["Dusun/Jl._Pengambilan"]}</td>
+                    <td class="px-6 py-4">Rp ${Number(d.Nominal).toLocaleString('id-ID')}</td>
+                    <td class="px-6 py-4">${d.Kolektor}</td>
+                    <td class="px-6 py-4">
+                        <a href="https://wa.me/${d.Hp_Pengambilan.replace(/\D/g,'')}" target="_blank" class="text-green-600 hover:underline">
+                            ${d.Hp_Pengambilan}
+                        </a>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function downloadRekap() {
+            if (dataBolosGlobal.length === 0) return alert('Tidak ada data untuk diunduh');
+            
+            const headers = ["Nomor_Register", "Nama", "Alamat", "Jenis_Donatur", "Kolektor", "Nominal", "Hp_Pengambilan"];
+            const csvRows = [headers.join(',')];
+
+            dataBolosGlobal.forEach(d => {
+                const row = [
+                    d.Nomor_Register,
+                    `"${d.Nama}"`,
+                    `"${d["Dusun/Jl._Pengambilan"]}"`,
+                    d.Jenis_Donatur,
+                    `"${d.Kolektor}"`,
+                    d.Nominal,
+                    d.Hp_Pengambilan
+                ];
+                csvRows.push(row.join(','));
+            });
+
+            const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.setAttribute('href', url);
+            a.setAttribute('download', `Rekap_Bolos_${new Date().toLocaleDateString('id-ID')}.csv`);
+            a.click();
+        }
+
+        // Jalankan fetch saat halaman dimuat
+        fetchData();
+    </script>
+</body>
+</html>
